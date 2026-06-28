@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>参加者差分レポート</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Hiragino Sans', 'Yu Gothic UI', sans-serif;
+  background: #f0f2f5;
+  color: #1a1d23;
+  min-height: 100vh;
+}
+
+/* ── Header ── */
+header {
+  background: #1a1d23;
+  padding: 18px 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+header h1 { color: #fff; font-size: 17px; font-weight: 600; }
+.file-badges { display: flex; gap: 8px; align-items: center; }
+.file-badge { font-size: 11px; padding: 4px 10px; border-radius: 20px; font-weight: 600; font-family: monospace; }
+.badge-old { background: #374151; color: #9ca3af; }
+.badge-new { background: #1d4ed8; color: #bfdbfe; }
+.badge-arrow { color: #6b7280; font-size: 14px; }
+
+/* ── Upload screen ── */
+#uploadScreen { max-width: 700px; margin: 48px auto; padding: 0 24px; }
+.upload-title { font-size: 20px; font-weight: 700; margin-bottom: 6px; }
+.upload-sub { font-size: 13px; color: #6b7280; margin-bottom: 28px; }
+.upload-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 20px; }
+.drop-zone {
+  background: #fff;
+  border: 2px dashed #d1d5db;
+  border-radius: 14px;
+  padding: 32px 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color .2s, background .2s;
+  position: relative;
+}
+.drop-zone:hover { border-color: #4f8ef7; background: #f0f5ff; }
+.drop-zone.loaded { border-color: #22c55e; border-style: solid; background: #f0fdf4; }
+.dz-icon { font-size: 30px; margin-bottom: 8px; }
+.dz-label { font-size: 13px; color: #374151; font-weight: 600; margin-bottom: 4px; }
+.dz-sub { font-size: 12px; color: #9ca3af; }
+.dz-file { font-size: 12px; color: #16a34a; font-weight: 600; margin-top: 8px; word-break: break-all; }
+input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.dz-delete {
+  position: absolute; top: 10px; right: 10px;
+  width: 24px; height: 24px; border-radius: 50%;
+  background: #fee2e2; color: #dc2626;
+  border: none; font-size: 14px; line-height: 1;
+  cursor: pointer; display: none; align-items: center; justify-content: center;
+  z-index: 10; transition: background .15s;
+}
+.dz-delete:hover { background: #fca5a5; }
+.drop-zone.loaded .dz-delete { display: flex; }
+
+/* key col selector */
+.key-section {
+  background: #fff; border-radius: 12px;
+  padding: 18px 20px; margin-bottom: 16px;
+  display: none;
+}
+.key-section h3 { font-size: 13px; font-weight: 700; color: #374151; margin-bottom: 10px; }
+.key-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.key-chip {
+  display: flex; align-items: center; gap: 5px;
+  background: #f3f4f6; border-radius: 20px;
+  padding: 5px 12px; font-size: 12px; cursor: pointer;
+  border: 2px solid transparent; transition: .15s;
+}
+.key-chip:hover { border-color: #4f8ef7; }
+.key-chip input { display: none; }
+.key-chip.checked { background: #dbeafe; border-color: #4f8ef7; color: #1d4ed8; font-weight: 600; }
+
+.run-btn {
+  display: none; width: 100%;
+  background: #1d4ed8; color: #fff;
+  border: none; border-radius: 12px;
+  padding: 15px; font-size: 15px; font-weight: 700;
+  cursor: pointer; transition: background .2s;
+}
+.run-btn:hover { background: #1e40af; }
+
+/* ── Result screen ── */
+#resultScreen { display: none; }
+
+/* Summary */
+.summary {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  padding: 24px 32px 0;
+  max-width: 900px;
+  margin: 0 auto;
+}
+.stat {
+  background: #fff;
+  border-radius: 14px;
+  padding: 20px 22px;
+  border-top: 4px solid transparent;
+  box-shadow: 0 1px 4px rgba(0,0,0,.06);
+  cursor: pointer;
+  transition: transform .15s, box-shadow .15s;
+  user-select: none;
+}
+.stat:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,.1); }
+.stat.active { outline: 2px solid #4f8ef7; outline-offset: 2px; }
+.stat-added   { border-color: #22c55e; }
+.stat-removed { border-color: #ef4444; }
+.stat-date    { border-color: #f59e0b; }
+.stat-status  { border-color: #8b5cf6; }
+.stat-num { font-size: 36px; font-weight: 800; line-height: 1; letter-spacing: -1px; }
+.stat-added   .stat-num { color: #16a34a; }
+.stat-removed .stat-num { color: #dc2626; }
+.stat-date    .stat-num { color: #d97706; }
+.stat-status  .stat-num { color: #7c3aed; }
+.stat-label { font-size: 12px; color: #6b7280; margin-top: 6px; }
+.stat-sub   { font-size: 11px; color: #9ca3af; margin-top: 2px; }
+
+/* Sections */
+.section { max-width: 900px; margin: 24px auto 0; padding: 0 32px 40px; display: none; }
+.section.active { display: block; }
+.section-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.section-title { font-size: 15px; font-weight: 700; }
+.section-count {
+  font-size: 12px; font-weight: 600;
+  padding: 2px 9px; border-radius: 20px;
+  background: #f3f4f6; color: #374151;
+}
+
+/* Cards */
+.cards { display: flex; flex-direction: column; gap: 10px; }
+.card {
+  background: #fff;
+  border-radius: 12px;
+  padding: 16px 20px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.06);
+  border-left: 4px solid transparent;
+  display: grid;
+  grid-template-columns: 36px 1fr auto;
+  gap: 12px;
+  align-items: start;
+}
+.card-added   { border-color: #22c55e; }
+.card-removed { border-color: #ef4444; }
+.card-date    { border-color: #f59e0b; }
+.card-status  { border-color: #8b5cf6; }
+.card-icon {
+  width: 36px; height: 36px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px;
+}
+.card-added   .card-icon { background: #dcfce7; }
+.card-removed .card-icon { background: #fee2e2; }
+.card-date    .card-icon { background: #fef3c7; }
+.card-status  .card-icon { background: #ede9fe; }
+.card-name { font-weight: 700; font-size: 15px; margin-bottom: 5px; }
+.card-meta { font-size: 12px; color: #6b7280; display: flex; flex-wrap: wrap; gap: 8px; }
+.card-id { font-size: 11px; color: #9ca3af; font-family: monospace; white-space: nowrap; }
+
+.date-change {
+  margin-top: 8px;
+  background: #fffbeb; border-radius: 8px;
+  padding: 7px 12px; font-size: 12px;
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+}
+.date-old { color: #ef4444; text-decoration: line-through; }
+.date-new { color: #16a34a; font-weight: 600; }
+
+.status-change {
+  margin-top: 8px; font-size: 12px;
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+}
+.pill {
+  padding: 2px 10px; border-radius: 20px;
+  font-weight: 600; font-size: 11px;
+}
+.pill-cancel  { background: #fee2e2; color: #dc2626; }
+.pill-applied { background: #dcfce7; color: #16a34a; }
+.pill-other   { background: #f3f4f6; color: #374151; }
+
+/* empty */
+.empty { text-align: center; padding: 48px 20px; color: #9ca3af; font-size: 14px; }
+.empty-icon { font-size: 40px; margin-bottom: 12px; }
+
+/* back btn */
+.back-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  margin: 20px 32px 0;
+  background: none; border: 1px solid #d1d5db;
+  border-radius: 8px; padding: 7px 14px;
+  font-size: 13px; cursor: pointer; color: #374151;
+  max-width: 900px;
+}
+.back-btn:hover { background: #f3f4f6; }
+
+@media (max-width: 600px) {
+  .upload-grid { grid-template-columns: 1fr; }
+  .summary { grid-template-columns: 1fr 1fr; padding: 16px 16px 0; }
+  .section { padding: 0 16px 32px; }
+  header { padding: 14px 16px; }
+  .card { grid-template-columns: 36px 1fr; }
+  .card-id { display: none; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>OpwnWork イベント参加者変更管理</h1>
+  <div class="file-badges" id="headerBadges" style="display:none">
+    <span class="file-badge badge-old" id="badge1">—</span>
+    <span class="badge-arrow">→</span>
+    <span class="file-badge badge-new" id="badge2">—</span>
+  </div>
+</header>
+
+<!-- ═══ UPLOAD SCREEN ═══ -->
+<div id="uploadScreen">
+  <div class="upload-title">2つのファイルをアップロード</div>
+  <div class="upload-sub">旧ファイル（Before）と新ファイル（After）を選択すると、増えた候補者・減った候補者・日程変更を自動で検出します。<br>対応ファイル：.csv/.xlsx/.xls</div>
+
+  <div class="upload-grid">
+    <div class="drop-zone" id="dz1">
+      <button class="dz-delete" onclick="clearFile(event,1)">✕</button>
+      <div class="dz-icon">📄</div>
+      <div class="dz-label">旧ファイル（Before）</div>
+      <div class="dz-sub">CSV / Excel をアップロード</div>
+      <div class="dz-file" id="fn1"></div>
+      <input type="file" id="f1" accept=".csv,.xlsx,.xls" onchange="onFile(1)">
+    </div>
+    <div class="drop-zone" id="dz2">
+      <button class="dz-delete" onclick="clearFile(event,2)">✕</button>
+      <div class="dz-icon">📄</div>
+      <div class="dz-label">新ファイル（After）</div>
+      <div class="dz-sub">CSV / Excel をアップロード</div>
+      <div class="dz-file" id="fn2"></div>
+      <input type="file" id="f2" accept=".csv,.xlsx,.xls" onchange="onFile(2)">
+    </div>
+  </div>
+
+  <div class="key-section" id="keySection">
+    <h3>🔑 行の同一性を判定するキー列（複数選択可）</h3>
+    <div class="key-chips" id="keyChips"></div>
+  </div>
+
+  <button class="run-btn" id="runBtn" onclick="runDiff()">差分を分析する →</button>
+</div>
+
+<!-- ═══ RESULT SCREEN ═══ -->
+<div id="resultScreen">
+  <button class="back-btn" onclick="reset()">← 別のファイルを比較</button>
+
+  <div class="summary">
+    <div class="stat stat-added" onclick="showSec('added')">
+      <div class="stat-num" id="n-added">—</div>
+      <div class="stat-label">新規申込</div>
+      <div class="stat-sub">増えた候補者</div>
+    </div>
+    <div class="stat stat-removed" onclick="showSec('removed')">
+      <div class="stat-num" id="n-removed">—</div>
+      <div class="stat-label">キャンセル・離脱</div>
+      <div class="stat-sub">減った候補者</div>
+    </div>
+    <div class="stat stat-date" onclick="showSec('date')">
+      <div class="stat-num" id="n-date">—</div>
+      <div class="stat-label">日程変更</div>
+      <div class="stat-sub">開催日時が変わった</div>
+    </div>
+    <div class="stat stat-status" onclick="showSec('status')">
+      <div class="stat-num" id="n-status">—</div>
+      <div class="stat-label">ステータス変更</div>
+      <div class="stat-sub">申込状況が変わった</div>
+    </div>
+  </div>
+
+  <div class="section active" id="sec-added">
+    <div class="section-head">
+      <span class="section-title">🟢 新規申込（増えた候補者）</span>
+      <span class="section-count" id="sc-added"></span>
+    </div>
+    <div class="cards" id="cards-added"></div>
+  </div>
+
+  <div class="section" id="sec-removed">
+    <div class="section-head">
+      <span class="section-title">🔴 キャンセル・離脱（減った候補者）</span>
+      <span class="section-count" id="sc-removed"></span>
+    </div>
+    <div class="cards" id="cards-removed"></div>
+  </div>
+
+  <div class="section" id="sec-date">
+    <div class="section-head">
+      <span class="section-title">🟡 日程変更</span>
+      <span class="section-count" id="sc-date"></span>
+    </div>
+    <div class="cards" id="cards-date"></div>
+  </div>
+
+  <div class="section" id="sec-status">
+    <div class="section-head">
+      <span class="section-title">🟣 ステータス変更</span>
+      <span class="section-count" id="sc-status"></span>
+    </div>
+    <div class="cards" id="cards-status"></div>
+  </div>
+</div>
+
+<script>
+// ── File parser (CSV + Excel) ─────────────────────────────
+function parseFile(file, callback) {
+  const ext = file.name.split('.').pop().toLowerCase();
+  const reader = new FileReader();
+
+  if (ext === 'csv') {
+    reader.onload = e => callback(parseCSV(e.target.result));
+    reader.readAsText(file, 'UTF-8');
+  } else {
+    // xlsx / xls → SheetJS
+    reader.onload = e => {
+      const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array', cellDates: true });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const raw = XLSX.utils.sheet_to_json(ws, { defval: '', raw: false });
+      if (!raw.length) return callback({ headers: [], rows: [] });
+      const headers = Object.keys(raw[0]);
+      const rows = raw.map(r => {
+        const obj = {};
+        headers.forEach(h => obj[h] = String(r[h] ?? '').trim());
+        return obj;
+      });
+      callback({ headers, rows });
+    };
+    reader.readAsArrayBuffer(file);
+  }
+}
+
+function parseCSV(text) {
+  const lines = text.split(/\r?\n/);
+  const headers = splitLine(lines[0]);
+  const rows = [];
+  for (let i = 1; i < lines.length; i++) {
+    if (!lines[i].trim()) continue;
+    const vals = splitLine(lines[i]);
+    const obj = {};
+    headers.forEach((h, j) => obj[h] = (vals[j] ?? '').trim());
+    rows.push(obj);
+  }
+  return { headers, rows };
+}
+
+function splitLine(line) {
+  const res = []; let cur = '', inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (c === '"') { if (inQ && line[i+1] === '"') { cur += '"'; i++; } else inQ = !inQ; }
+    else if (c === ',' && !inQ) { res.push(cur); cur = ''; }
+    else cur += c;
+  }
+  res.push(cur);
+  return res;
+}
+
+// ── File icon by extension ────────────────────────────────
+function fileIcon(name) {
+  const ext = (name || '').split('.').pop().toLowerCase();
+  if (ext === 'csv') return '📄';
+  if (ext === 'xlsx' || ext === 'xls') return '📊';
+  return '📄';
+}
+
+// ── State ────────────────────────────────────────────────
+let csv1 = null, csv2 = null;
+let selectedKeys = new Set();
+let fileNames = ['', ''];
+
+function clearFile(e, slot) {
+  e.preventDefault();
+  e.stopPropagation();
+  if (slot === 1) csv1 = null; else csv2 = null;
+  fileNames[slot - 1] = '';
+  document.getElementById('f' + slot).value = '';
+  document.getElementById('fn' + slot).textContent = '';
+  document.getElementById('dz' + slot).classList.remove('loaded');
+  document.getElementById('dz' + slot).querySelector('.dz-icon').textContent = '📄';
+  // hide key/run if either file is gone
+  document.getElementById('keySection').style.display = 'none';
+  document.getElementById('runBtn').style.display = 'none';
+}
+
+function onFile(slot) {
+  const file = document.getElementById('f' + slot).files[0];
+  if (!file) return;
+  fileNames[slot - 1] = file.name.replace(/\.(csv|xlsx|xls)$/i, '').replace(/_/g, ' ');
+  document.getElementById('dz' + slot).querySelector('.dz-icon').textContent = fileIcon(file.name);
+  parseFile(file, parsed => {
+    if (slot === 1) csv1 = parsed; else csv2 = parsed;
+    document.getElementById('fn' + slot).textContent = file.name;
+    document.getElementById('dz' + slot).classList.add('loaded');
+    if (csv1 && csv2) setupKeys();
+  });
+}
+
+function setupKeys() {
+  const allH = [...new Set([...csv1.headers, ...csv2.headers])];
+  const auto = allH.filter(h => /id|ID|番号|コード/i.test(h));
+  selectedKeys = new Set(auto.length ? [auto[0]] : [allH[0]]);
+
+  const chips = document.getElementById('keyChips');
+  chips.innerHTML = '';
+  allH.forEach(h => {
+    const div = document.createElement('div');
+    div.className = 'key-chip' + (selectedKeys.has(h) ? ' checked' : '');
+    div.innerHTML = `<input type="checkbox" ${selectedKeys.has(h) ? 'checked' : ''}><span>${esc(h)}</span>`;
+    div.onclick = () => {
+      if (selectedKeys.has(h)) { if (selectedKeys.size > 1) { selectedKeys.delete(h); div.classList.remove('checked'); } }
+      else { selectedKeys.add(h); div.classList.add('checked'); }
+    };
+    chips.appendChild(div);
+  });
+
+  document.getElementById('keySection').style.display = 'block';
+  document.getElementById('runBtn').style.display = 'block';
+}
+
+// ── Diff ─────────────────────────────────────────────────
+function getKey(row, keys) { return [...keys].map(k => row[k] ?? '').join('||'); }
+
+function normDate(s) {
+  try { return new Date(String(s).trim()).getTime(); } catch { return null; }
+}
+
+function runDiff() {
+  const keys = [...selectedKeys];
+  const map1 = new Map();
+  csv1.rows.forEach(r => map1.set(getKey(r, keys), r));
+  const map2 = new Map();
+  csv2.rows.forEach(r => map2.set(getKey(r, keys), r));
+
+  // Detect date column and status column
+  const allH = [...new Set([...csv1.headers, ...csv2.headers])];
+  const dateCol   = allH.find(h => /開催.*日時|日程|日時/.test(h)) || null;
+  const statusCol = allH.find(h => /申込ステータス$/.test(h)) || null;
+  const nameCol   = allH.find(h => /候補者氏名$|名前|氏名/.test(h)) || null;
+  const emailCol  = allH.find(h => /メール|email/i.test(h)) || null;
+  const eventCol  = allH.find(h => /イベント名/.test(h)) || null;
+  const updCol    = allH.find(h => /更新日時/.test(h)) || null;
+
+  const added = [], removed = [], dateChanged = [], statusChanged = [];
+
+  // Added
+  csv2.rows.forEach(r2 => {
+    const k = getKey(r2, keys);
+    if (!map1.has(k)) added.push(r2);
+  });
+
+  // Removed
+  csv1.rows.forEach(r1 => {
+    const k = getKey(r1, keys);
+    if (!map2.has(k)) removed.push(r1);
+  });
+
+  // Changed (common rows)
+  csv2.rows.forEach(r2 => {
+    const k = getKey(r2, keys);
+    if (!map1.has(k)) return;
+    const r1 = map1.get(k);
+
+    if (dateCol) {
+      const d1 = normDate(r1[dateCol]), d2 = normDate(r2[dateCol]);
+      if (d1 && d2 && d1 !== d2) dateChanged.push({ r1, r2 });
+    }
+    if (statusCol) {
+      const s1 = (r1[statusCol] ?? '').trim();
+      const s2 = (r2[statusCol] ?? '').trim();
+      if (s1 !== s2) statusChanged.push({ r1, r2, s1, s2 });
+    }
+  });
+
+  // Render
+  document.getElementById('n-added').textContent   = added.length;
+  document.getElementById('n-removed').textContent = removed.length;
+  document.getElementById('n-date').textContent    = dateChanged.length;
+  document.getElementById('n-status').textContent  = statusChanged.length;
+  document.getElementById('sc-added').textContent   = added.length + '件';
+  document.getElementById('sc-removed').textContent = removed.length + '件';
+  document.getElementById('sc-date').textContent    = dateChanged.length + '件';
+  document.getElementById('sc-status').textContent  = statusChanged.length + '件';
+
+  // Header badges
+  document.getElementById('badge1').textContent = fileNames[0] || 'Before';
+  document.getElementById('badge2').textContent = fileNames[1] || 'After';
+  document.getElementById('headerBadges').style.display = 'flex';
+
+  renderCards('cards-added', added, 'added', { nameCol, emailCol, eventCol, dateCol, updCol });
+  renderCards('cards-removed', removed, 'removed', { nameCol, emailCol, eventCol, dateCol, updCol });
+  renderDateCards('cards-date', dateChanged, { nameCol, emailCol, eventCol, dateCol });
+  renderStatusCards('cards-status', statusChanged, { nameCol, emailCol, eventCol, dateCol });
+
+  document.getElementById('uploadScreen').style.display = 'none';
+  document.getElementById('resultScreen').style.display = 'block';
+  showSec('added');
+}
+
+function renderCards(containerId, rows, type, cols) {
+  const el = document.getElementById(containerId);
+  if (!rows.length) {
+    el.innerHTML = `<div class="empty"><div class="empty-icon">${type === 'added' ? '✅' : '✅'}</div>該当する候補者はいません</div>`;
+    return;
+  }
+  const icons = { added: '➕', removed: '➖' };
+  el.innerHTML = rows.map(r => {
+    const name    = cols.nameCol  ? esc(r[cols.nameCol] || '—') : '—';
+    const event   = cols.eventCol ? esc(r[cols.eventCol] || '')  : '';
+    const date    = cols.dateCol  ? esc(r[cols.dateCol] || '')   : '';
+    const email   = cols.emailCol ? esc(r[cols.emailCol] || '')  : '';
+    const updated = cols.updCol   ? esc(r[cols.updCol] || '')    : '';
+    const id      = [...selectedKeys].map(k => esc(r[k] || '')).join(' / ');
+    return `
+    <div class="card card-${type}">
+      <div class="card-icon">${icons[type]}</div>
+      <div>
+        <div class="card-name">${name}</div>
+        <div class="card-meta">
+          ${date  ? `<span>📅 ${date}</span>` : ''}
+          ${event ? `<span>📋 ${event}</span>` : ''}
+          ${email ? `<span>✉️ ${email}</span>` : ''}
+        </div>
+        ${updated ? `<div class="card-meta" style="margin-top:4px;color:#9ca3af">申込更新: ${updated}</div>` : ''}
+      </div>
+      <div class="card-id">${id}</div>
+    </div>`;
+  }).join('');
+}
+
+function renderDateCards(containerId, items, cols) {
+  const el = document.getElementById(containerId);
+  if (!items.length) {
+    el.innerHTML = `<div class="empty"><div class="empty-icon">📅</div>日程変更はありません</div>`;
+    return;
+  }
+  el.innerHTML = items.map(({ r1, r2 }) => {
+    const name  = cols.nameCol  ? esc(r2[cols.nameCol] || '—') : '—';
+    const event = cols.eventCol ? esc(r2[cols.eventCol] || '') : '';
+    const email = cols.emailCol ? esc(r2[cols.emailCol] || '') : '';
+    const od    = cols.dateCol  ? esc(r1[cols.dateCol] || '') : '';
+    const nd    = cols.dateCol  ? esc(r2[cols.dateCol] || '') : '';
+    const id    = [...selectedKeys].map(k => esc(r2[k] || '')).join(' / ');
+    return `
+    <div class="card card-date">
+      <div class="card-icon">🔄</div>
+      <div>
+        <div class="card-name">${name}</div>
+        <div class="card-meta">
+          ${event ? `<span>📋 ${event}</span>` : ''}
+          ${email ? `<span>✉️ ${email}</span>` : ''}
+        </div>
+        <div class="date-change">
+          <span class="date-old">${od}</span>
+          <span style="color:#9ca3af">→</span>
+          <span class="date-new">${nd}</span>
+        </div>
+      </div>
+      <div class="card-id">${id}</div>
+    </div>`;
+  }).join('');
+}
+
+function renderStatusCards(containerId, items, cols) {
+  const el = document.getElementById(containerId);
+  if (!items.length) {
+    el.innerHTML = `<div class="empty"><div class="empty-icon">🔄</div>ステータス変更はありません</div>`;
+    return;
+  }
+  el.innerHTML = items.map(({ r1, r2, s1, s2 }) => {
+    const name  = cols.nameCol  ? esc(r2[cols.nameCol] || '—') : '—';
+    const event = cols.eventCol ? esc(r2[cols.eventCol] || '') : '';
+    const date  = cols.dateCol  ? esc(r2[cols.dateCol] || '')  : '';
+    const email = cols.emailCol ? esc(r2[cols.emailCol] || '') : '';
+    const id    = [...selectedKeys].map(k => esc(r2[k] || '')).join(' / ');
+    function pillClass(s) {
+      if (/キャンセル/.test(s)) return 'pill-cancel';
+      if (/申し込み/.test(s)) return 'pill-applied';
+      return 'pill-other';
+    }
+    return `
+    <div class="card card-status">
+      <div class="card-icon">🔔</div>
+      <div>
+        <div class="card-name">${name}</div>
+        <div class="card-meta">
+          ${date  ? `<span>📅 ${date}</span>` : ''}
+          ${event ? `<span>📋 ${event}</span>` : ''}
+          ${email ? `<span>✉️ ${email}</span>` : ''}
+        </div>
+        <div class="status-change">
+          <span class="pill ${pillClass(s1)}">${esc(s1)}</span>
+          <span style="color:#9ca3af">→</span>
+          <span class="pill ${pillClass(s2)}">${esc(s2)}</span>
+        </div>
+      </div>
+      <div class="card-id">${id}</div>
+    </div>`;
+  }).join('');
+}
+
+// ── UI helpers ───────────────────────────────────────────
+function showSec(tab) {
+  ['added','removed','date','status'].forEach(s => {
+    document.getElementById('sec-' + s).classList.remove('active');
+    document.querySelector('.stat-' + s).classList.remove('active');
+  });
+  document.getElementById('sec-' + tab).classList.add('active');
+  document.querySelector('.stat-' + tab).classList.add('active');
+}
+
+function reset() {
+  csv1 = csv2 = null; selectedKeys = new Set(); fileNames = ['',''];
+  document.getElementById('f1').value = '';
+  document.getElementById('f2').value = '';
+  document.getElementById('fn1').textContent = '';
+  document.getElementById('fn2').textContent = '';
+  document.getElementById('dz1').classList.remove('loaded');
+  document.getElementById('dz2').classList.remove('loaded');
+  document.getElementById('keySection').style.display = 'none';
+  document.getElementById('runBtn').style.display = 'none';
+  document.getElementById('headerBadges').style.display = 'none';
+  document.getElementById('uploadScreen').style.display = 'block';
+  document.getElementById('resultScreen').style.display = 'none';
+}
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+</script>
+</body>
+</html>
